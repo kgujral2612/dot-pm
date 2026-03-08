@@ -1,0 +1,125 @@
+@import "tailwindcss";
+
+:root {
+  --bg-page: #0a0a0a;
+  --bg-panel: #141414;
+  --bg-card: #1a1a1a;
+  --border: #262626;
+  --border-hover: #3a3a3a;
+  --text-primary: #e0e0e0;
+  --text-secondary: #808080;
+  --text-muted: #555555;
+  --accent: #e5a158;
+  --accent-dim: #e5a15833;
+}
+
+@theme inline {
+  --color-page: var(--bg-page);
+  --color-panel: var(--bg-panel);
+  --color-card: var(--bg-card);
+  --color-border: var(--border);
+  --color-border-hover: var(--border-hover);
+  --color-primary: var(--text-primary);
+  --color-secondary: var(--text-secondary);
+  --color-muted: var(--text-muted);
+  --color-accent: var(--accent);
+  --color-accent-dim: var(--accent-dim);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+    Ubuntu, Cantarell, sans-serif;
+  font-size: 13px;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--accent-dim);
+}
+
+input,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+textarea:focus,
+input:focus {
+  outline: none;
+  border-color: var(--accent) !important;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}
+
+/* note preview formatting */
+.note-preview .note-p {
+  margin: 0 0 4px;
+}
+
+.note-preview strong {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.note-preview em {
+  font-style: italic;
+  color: var(--text-secondary);
+}
+
+.note-preview .note-code {
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+  font-size: 11px;
+  background: #222;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 1px 4px;
+}
+
+.note-preview .note-code-block {
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+  font-size: 11px;
+  background: #111;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 8px 10px;
+  margin: 4px 0;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.note-preview .note-ul {
+  list-style: disc;
+  padding-left: 18px;
+  margin: 2px 0;
+}
+
+.note-preview .note-ol {
+  list-style: decimal;
+  padding-left: 18px;
+  margin: 2px 0;
+}
+
+.note-preview li {
+  margin: 1px 0;
+}
