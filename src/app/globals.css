@@ -8,7 +8,7 @@
   --border-hover: #3a3a3a;
   --text-primary: #e0e0e0;
   --text-secondary: #808080;
-  --text-muted: #555555;
+  --text-muted: #E0E0E0;
   --accent: #e5a158;
   --accent-dim: #e5a15833;
 }
@@ -70,6 +70,17 @@ input:focus {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #444;
+}
+
+/* live markdown overlay formatting */
+.fmt-syn {
+  opacity: 0.3;
+}
+
+.fmt-code {
+  background: #222;
+  border-radius: 2px;
+  color: var(--accent);
 }
 
 /* note preview formatting */

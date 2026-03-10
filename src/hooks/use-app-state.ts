@@ -22,6 +22,7 @@ type Action =
   | { type: 'ADD_TODO'; text: string }
   | { type: 'TOGGLE_TODO'; id: string }
   | { type: 'DELETE_TODO'; id: string }
+  | { type: 'UPDATE_CARD'; id: string; title: string; description?: string }
   | { type: 'UPDATE_NOTE'; content: string };
 
 function reducer(state: AppState, action: Action): AppState {
@@ -83,6 +84,16 @@ function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         todos: state.todos.filter((t) => t.id !== action.id),
+      };
+
+    case 'UPDATE_CARD':
+      return {
+        ...state,
+        cards: state.cards.map((c) =>
+          c.id === action.id
+            ? { ...c, title: action.title, description: action.description, updatedAt: Date.now() }
+            : c
+        ),
       };
 
     case 'UPDATE_NOTE':
@@ -177,6 +188,12 @@ export function useAppDispatch() {
     [dispatch]
   );
 
+  const updateCard = useCallback(
+    (id: string, title: string, description?: string) =>
+      dispatch({ type: 'UPDATE_CARD', id, title, description }),
+    [dispatch]
+  );
+
   const updateNote = useCallback(
     (content: string) => dispatch({ type: 'UPDATE_NOTE', content }),
     [dispatch]
@@ -186,6 +203,7 @@ export function useAppDispatch() {
     addCard,
     moveCard,
     deleteCard,
+    updateCard,
     reorderCards,
     addTodo,
     toggleTodo,

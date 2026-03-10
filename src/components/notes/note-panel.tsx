@@ -10,159 +10,144 @@ function escapeHtml(text: string): string {
     .replace(/>/g, '&gt;');
 }
 
-function renderMarkdown(raw: string): string {
-  const lines = raw.split('\n');
-  const output: string[] = [];
-  let inOrderedList = false;
-  let inUnorderedList = false;
-  let inCodeBlock = false;
-  let codeBlockContent: string[] = [];
+function formatLine(text: string): string {
+  let s = escapeHtml(text);
 
-  function closeLists() {
-    if (inUnorderedList) {
-      output.push('</ul>');
-      inUnorderedList = false;
-    }
-    if (inOrderedList) {
-      output.push('</ol>');
-      inOrderedList = false;
-    }
-  }
+  // Protect code spans from bold/italic processing
+  const codeSpans: string[] = [];
+  s = s.replace(/`([^`]+)`/g, (_, content) => {
+    codeSpans.push(content);
+    return `\x00${codeSpans.length - 1}\x00`;
+  });
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+  // Bold: **text**
+  s = s.replace(
+    /\*\*(.+?)\*\*/g,
+    '<span class="fmt-syn">**</span><b>$1</b><span class="fmt-syn">**</span>'
+  );
 
-    // fenced code blocks
-    if (line.trimStart().startsWith('```')) {
-      if (!inCodeBlock) {
-        closeLists();
-        inCodeBlock = true;
-        codeBlockContent = [];
-      } else {
-        output.push(
-          '<pre class="note-code-block">' +
-            escapeHtml(codeBlockContent.join('\n')) +
-            '</pre>'
-        );
-        inCodeBlock = false;
-      }
-      continue;
-    }
+  // Italic: *text* (single asterisks only)
+  s = s.replace(
+    /(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g,
+    '<span class="fmt-syn">*</span><i>$1</i><span class="fmt-syn">*</span>'
+  );
 
-    if (inCodeBlock) {
-      codeBlockContent.push(line);
-      continue;
-    }
-
-    // blank line
-    if (line.trim() === '') {
-      closeLists();
-      output.push('<br/>');
-      continue;
-    }
-
-    // unordered list
-    const ulMatch = line.match(/^(\s*)[-*]\s+(.*)/);
-    if (ulMatch) {
-      if (inOrderedList) {
-        output.push('</ol>');
-        inOrderedList = false;
-      }
-      if (!inUnorderedList) {
-        output.push('<ul class="note-ul">');
-        inUnorderedList = true;
-      }
-      output.push('<li>' + inlineFormat(ulMatch[2]) + '</li>');
-      continue;
-    }
-
-    // ordered list
-    const olMatch = line.match(/^(\s*)\d+[.)]\s+(.*)/);
-    if (olMatch) {
-      if (inUnorderedList) {
-        output.push('</ul>');
-        inUnorderedList = false;
-      }
-      if (!inOrderedList) {
-        output.push('<ol class="note-ol">');
-        inOrderedList = true;
-      }
-      output.push('<li>' + inlineFormat(olMatch[2]) + '</li>');
-      continue;
-    }
-
-    // regular line
-    closeLists();
-    output.push('<p class="note-p">' + inlineFormat(line) + '</p>');
-  }
-
-  // close any open blocks
-  if (inCodeBlock) {
-    output.push(
-      '<pre class="note-code-block">' +
-        escapeHtml(codeBlockContent.join('\n')) +
-        '</pre>'
+  // Restore code spans
+  s = s.replace(/\x00(\d+)\x00/g, (_, idx) => {
+    return (
+      '<span class="fmt-syn">`</span><span class="fmt-code">' +
+      codeSpans[parseInt(idx)] +
+      '</span><span class="fmt-syn">`</span>'
     );
-  }
-  closeLists();
+  });
 
-  return output.join('\n');
+  // Bullet prefix: dim the "- "
+  s = s.replace(/^(- )/, '<span class="fmt-syn">$1</span>');
+
+  // Number prefix: dim the "1. "
+  s = s.replace(/^(\d+\. )/, '<span class="fmt-syn">$1</span>');
+
+  return s;
 }
 
-function inlineFormat(text: string): string {
-  let result = escapeHtml(text);
-  // inline code (backticks) — do first to avoid processing inside code
-  result = result.replace(/`([^`]+)`/g, '<code class="note-code">$1</code>');
-  // bold (**text** or __text__)
-  result = result.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  result = result.replace(/__(.+?)__/g, '<strong>$1</strong>');
-  // italic (*text* or _text_)
-  result = result.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  result = result.replace(/(?<![a-zA-Z0-9])_(.+?)_(?![a-zA-Z0-9])/g, '<em>$1</em>');
-  return result;
+function renderOverlay(text: string): string {
+  if (!text) return '\n';
+  return text.split('\n').map(formatLine).join('\n');
 }
 
 export function NotePanel() {
   const { state } = useAppState();
   const { updateNote } = useAppDispatch();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>();
-  const [mode, setMode] = useState<'edit' | 'preview'>('edit');
+  const lastSavedRef = useRef(state.note.content);
+  const [localContent, setLocalContent] = useState(state.note.content);
 
+  // Sync from external state changes (hydration) only
   useEffect(() => {
-    if (
-      mode === 'edit' &&
-      textareaRef.current &&
-      textareaRef.current.value !== state.note.content
-    ) {
-      textareaRef.current.value = state.note.content;
+    if (state.note.content !== lastSavedRef.current) {
+      setLocalContent(state.note.content);
     }
-  }, [state.note.content, mode]);
+    lastSavedRef.current = state.note.content;
+  }, [state.note.content]);
 
-  const handleInput = useCallback(() => {
-    clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => {
-      if (textareaRef.current) {
-        updateNote(textareaRef.current.value);
-      }
-    }, 500);
-  }, [updateNote]);
+  const handleChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const value = e.target.value;
+      setLocalContent(value);
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = setTimeout(() => {
+        lastSavedRef.current = value;
+        updateNote(value);
+      }, 500);
+    },
+    [updateNote]
+  );
 
   const handleBlur = useCallback(() => {
     clearTimeout(timeoutRef.current);
-    if (textareaRef.current) {
-      updateNote(textareaRef.current.value);
-    }
-  }, [updateNote]);
+    lastSavedRef.current = localContent;
+    updateNote(localContent);
+  }, [updateNote, localContent]);
 
-  const switchToPreview = useCallback(() => {
-    // flush pending changes before switching
-    clearTimeout(timeoutRef.current);
-    if (textareaRef.current) {
-      updateNote(textareaRef.current.value);
+  const handleScroll = useCallback(() => {
+    if (textareaRef.current && overlayRef.current) {
+      overlayRef.current.scrollTop = textareaRef.current.scrollTop;
     }
-    setMode('preview');
-  }, [updateNote]);
+  }, []);
+
+  const fmt = useCallback(
+    (type: 'bold' | 'italic' | 'bullet' | 'number' | 'code') => {
+      const ta = textareaRef.current;
+      if (!ta) return;
+      const { selectionStart, selectionEnd } = ta;
+      const selected = localContent.slice(selectionStart, selectionEnd);
+
+      let newContent: string;
+      let cursorStart: number;
+      let cursorEnd: number;
+
+      if (type === 'bullet' || type === 'number') {
+        const prefix = type === 'bullet' ? '- ' : '1. ';
+        const lineStart =
+          localContent.lastIndexOf('\n', selectionStart - 1) + 1;
+        newContent =
+          localContent.slice(0, lineStart) +
+          prefix +
+          localContent.slice(lineStart);
+        cursorStart = cursorEnd = selectionStart + prefix.length;
+      } else {
+        const wrap = type === 'bold' ? '**' : type === 'italic' ? '*' : '`';
+        newContent =
+          localContent.slice(0, selectionStart) +
+          wrap +
+          selected +
+          wrap +
+          localContent.slice(selectionEnd);
+        if (selectionStart === selectionEnd) {
+          cursorStart = cursorEnd = selectionStart + wrap.length;
+        } else {
+          cursorStart = selectionStart + wrap.length;
+          cursorEnd = selectionEnd + wrap.length;
+        }
+      }
+
+      setLocalContent(newContent);
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = setTimeout(() => {
+        lastSavedRef.current = newContent;
+        updateNote(newContent);
+      }, 500);
+
+      requestAnimationFrame(() => {
+        ta.focus();
+        ta.selectionStart = cursorStart;
+        ta.selectionEnd = cursorEnd;
+      });
+    },
+    [localContent, updateNote]
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -170,46 +155,69 @@ export function NotePanel() {
         <span className="text-[10px] font-medium tracking-[0.1em] uppercase text-muted">
           notes
         </span>
-        <div className="flex gap-0.5">
+        <div className="flex gap-1">
           <button
-            onClick={() => setMode('edit')}
-            className={`rounded-sm px-1.5 py-0.5 text-[10px] transition-colors duration-150 ${
-              mode === 'edit'
-                ? 'text-accent'
-                : 'text-muted hover:text-secondary'
-            }`}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => fmt('bold')}
+            title="Bold"
+            className="rounded-sm px-1.5 py-0.5 text-[11px] font-bold text-secondary hover:text-primary transition-colors duration-150"
           >
-            edit
+            B
           </button>
           <button
-            onClick={switchToPreview}
-            className={`rounded-sm px-1.5 py-0.5 text-[10px] transition-colors duration-150 ${
-              mode === 'preview'
-                ? 'text-accent'
-                : 'text-muted hover:text-secondary'
-            }`}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => fmt('italic')}
+            title="Italic"
+            className="rounded-sm px-1.5 py-0.5 text-[11px] italic text-secondary hover:text-primary transition-colors duration-150"
           >
-            preview
+            I
+          </button>
+          <button
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => fmt('bullet')}
+            title="Bullet list"
+            className="rounded-sm px-1.5 py-0.5 text-[11px] text-secondary hover:text-primary transition-colors duration-150"
+          >
+            &bull;
+          </button>
+          <button
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => fmt('number')}
+            title="Numbered list"
+            className="rounded-sm px-1.5 py-0.5 text-[11px] text-secondary hover:text-primary transition-colors duration-150"
+          >
+            1.
+          </button>
+          <button
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => fmt('code')}
+            title="Code"
+            className="rounded-sm px-1.5 py-0.5 font-mono text-[11px] text-secondary hover:text-primary transition-colors duration-150"
+          >
+            &lt;/&gt;
           </button>
         </div>
       </div>
       <div className="flex-1 overflow-hidden p-2 pt-0">
-        {mode === 'edit' ? (
+        <div className="relative h-full">
           <textarea
             ref={textareaRef}
-            defaultValue={state.note.content}
-            onInput={handleInput}
+            value={localContent}
+            onChange={handleChange}
             onBlur={handleBlur}
-            placeholder="scratch pad...&#10;&#10;**bold**  *italic*  `code`&#10;- bullets&#10;1. numbered&#10;``` code blocks ```"
+            onScroll={handleScroll}
             spellCheck={false}
-            className="h-full w-full resize-none rounded-sm border border-border bg-card p-3 font-mono text-[12px] leading-relaxed text-primary placeholder:text-muted focus:border-accent"
+            className="relative z-[1] h-full w-full resize-none rounded-sm border border-border bg-card p-3 font-mono text-[12px] leading-relaxed text-muted focus:border-accent"
+            style={{ caretColor: 'var(--text-primary)' }}
           />
-        ) : (
           <div
-            className="note-preview h-full overflow-y-auto rounded-sm border border-border bg-card p-3 text-[12px] leading-relaxed text-primary"
-            dangerouslySetInnerHTML={{ __html: renderMarkdown(state.note.content) }}
+            ref={overlayRef}
+            className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words rounded-sm border border-transparent p-3 font-mono text-[12px] leading-relaxed text-primary"
+            dangerouslySetInnerHTML={{
+              __html: renderOverlay(localContent),
+            }}
           />
-        )}
+        </div>
       </div>
     </div>
   );
